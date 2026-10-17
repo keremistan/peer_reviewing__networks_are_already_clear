@@ -1,0 +1,26 @@
+# Configuration for Modern InceptionV1 - Base Scale (~9.2M params)
+model:
+  scale: base
+  width_multiplier: 0.95
+  num_classes: 1000
+  use_residual: true
+  residual_scale: 1.0
+  drop_path_rate: 0.1
+  dropout_rate: 0.2
+
+training:
+  epochs: 100
+  warmup_epochs: 5
+  batch_size: 128
+  lr: 0.001
+  min_lr: 0.000001
+  weight_decay: 0.05
+  clip_grad: 1.0
+  use_amp: true
+
+data:
+  img_size: 224
+  mixup_alpha: 0.8
+  cutmix_alpha: 1.0
+  mixup_prob: 1.0
+  label_smoothing: 0.1
