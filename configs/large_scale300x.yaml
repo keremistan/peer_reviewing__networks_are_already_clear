@@ -17,9 +17,17 @@ training:
   weight_decay: 0.05
   clip_grad: 1.0
   use_amp: true
+  device: "auto"                    # "auto", "cuda", "mps", or "cpu"
+  checkpoint_dir: "checkpoints"
+  resume: null                      # e.g., "checkpoints/scale_large_params_.../latest_model.pt"
+  wandb_project: null
 
 data:
+  data_dir: null                    # Path to dataset directory (with train/ and val/), or null for synthetic
+  synthetic: false                  # Set true to force synthetic dataset, or false to use data_dir
+  num_workers: 4
   img_size: 224
+  no_mixup: false
   mixup_alpha: 0.8
   cutmix_alpha: 1.0
   mixup_prob: 1.0

@@ -91,6 +91,8 @@ def build_dataloaders(
         val_dataset = datasets.ImageFolder(val_dir, transform=val_transform)
         print(f"[Dataset] Loaded ImageNet-1k: {len(train_dataset)} train samples, {len(val_dataset)} val samples.")
 
+    persistent_workers = True if num_workers > 0 else False
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -98,12 +100,13 @@ def build_dataloaders(
         num_workers=num_workers,
         pin_memory=pin_memory,
         drop_last=True,
+        persistent_workers=persistent_workers,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
+        num_workers=0,
         pin_memory=pin_memory,
         drop_last=False,
     )

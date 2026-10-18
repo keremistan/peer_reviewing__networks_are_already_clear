@@ -77,6 +77,7 @@ class Trainer:
         checkpoint_dir: str = "checkpoints",
         use_amp: bool = True,
         wandb_run = None,
+        resume_path: Optional[str] = None,
     ):
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -87,6 +88,8 @@ class Trainer:
         self.mixup_cutmix = mixup_cutmix
         self.checkpoint_dir = checkpoint_dir
         self.wandb_run = wandb_run
+        self.start_epoch = 0
+        self.best_top1 = 0.0
         os.makedirs(checkpoint_dir, exist_ok=True)
 
         # Loss function
@@ -112,6 +115,47 @@ class Trainer:
         self.use_amp = use_amp and (device.type in ["cuda", "mps"])
         self.amp_dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
         self.scaler = torch.amp.GradScaler("cuda") if (self.use_amp and device.type == "cuda") else None
+
+        # Resume if path provided
+        if resume_path:
+            self._resume_from_checkpoint(resume_path)
+
+    def _resume_from_checkpoint(self, path: str):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Checkpoint not found at: {path}")
+        print(f"[*] Resuming from checkpoint: {path}")
+        checkpoint = torch.load(path, map_location=self.device)
+
+        if "state_dict" in checkpoint:
+            self.model.load_state_dict(checkpoint["state_dict"])
+        elif "model" in checkpoint:
+            self.model.load_state_dict(checkpoint["model"])
+        else:
+            self.model.load_state_dict(checkpoint)
+
+        if "epoch" in checkpoint:
+            self.start_epoch = int(checkpoint["epoch"])
+        if "best_top1" in checkpoint:
+            self.best_top1 = float(checkpoint["best_top1"])
+        elif "val_top1" in checkpoint:
+            self.best_top1 = float(checkpoint["val_top1"])
+
+        if "optimizer" in checkpoint and checkpoint["optimizer"] is not None:
+            try:
+                self.optimizer.load_state_dict(checkpoint["optimizer"])
+            except Exception as e:
+                print(f"[!] Warning: Could not restore optimizer state: {e}")
+
+        if self.scaler is not None and "scaler" in checkpoint and checkpoint["scaler"] is not None:
+            try:
+                self.scaler.load_state_dict(checkpoint["scaler"])
+            except Exception as e:
+                print(f"[!] Warning: Could not restore scaler state: {e}")
+
+        print(
+            f"[✓] Checkpoint loaded successfully! Resuming from epoch {self.start_epoch + 1}/{self.epochs} "
+            f"(Previous Val Top-1: {self.best_top1:.2f}%)"
+        )
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         self.model.train()
@@ -166,11 +210,11 @@ class Trainer:
         }
 
     def train(self) -> Dict[str, Any]:
-        best_top1 = 0.0
+        best_top1 = self.best_top1
         history = []
 
-        print(f"[*] Starting training for {self.epochs} epochs on device: {self.device}")
-        for epoch in range(self.epochs):
+        print(f"[*] Starting training from epoch {self.start_epoch + 1} to {self.epochs} on device: {self.device}")
+        for epoch in range(self.start_epoch, self.epochs):
             train_metrics = self.train_epoch(epoch)
             val_loss, val_top1, val_top5 = evaluate(self.model, self.val_loader, self.device)
 
@@ -196,15 +240,20 @@ class Trainer:
             is_best = val_top1 > best_top1
             if is_best:
                 best_top1 = val_top1
-                torch.save(
-                    {"epoch": epoch + 1, "state_dict": self.model.state_dict(), "best_top1": best_top1},
-                    os.path.join(self.checkpoint_dir, "best_model.pt"),
-                )
 
-            torch.save(
-                {"epoch": epoch + 1, "state_dict": self.model.state_dict(), "val_top1": val_top1},
-                os.path.join(self.checkpoint_dir, "latest_model.pt"),
-            )
+            ckpt_payload = {
+                "epoch": epoch + 1,
+                "state_dict": self.model.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+                "scaler": self.scaler.state_dict() if self.scaler is not None else None,
+                "val_top1": val_top1,
+                "best_top1": best_top1,
+            }
+
+            if is_best:
+                torch.save(ckpt_payload, os.path.join(self.checkpoint_dir, "best_model.pt"))
+
+            torch.save(ckpt_payload, os.path.join(self.checkpoint_dir, "latest_model.pt"))
 
         print(f"[✓] Training completed! Best Top-1 Accuracy: {best_top1:.2f}%")
         return {"best_top1": best_top1, "history": history}
