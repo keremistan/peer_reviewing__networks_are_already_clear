@@ -2,7 +2,7 @@
 model:
   scale: large
   width_multiplier: 1.66
-  num_classes: 1000
+  num_classes: 100
   use_residual: true
   residual_scale: 1.0
   drop_path_rate: 0.15
